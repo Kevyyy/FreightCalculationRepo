@@ -1,0 +1,30 @@
+{
+  "kind": "collectionType",
+  "collectionName": "freight_calculations",
+  "info": {
+    "singularName": "freight-calculation",
+    "pluralName": "freight-calculations",
+    "displayName": "Freight Calculation",
+    "description": "Freight calculation density table"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "sub": {
+      "type": "integer",
+      "required": true,
+      "unique": true
+    },
+    "densityRange": {
+      "type": "string",
+      "required": true
+    },
+    "assignedFreightClass": {
+      "type": "decimal",
+      "required": true
+    }
+  }
+}
+
