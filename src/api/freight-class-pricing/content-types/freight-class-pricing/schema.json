@@ -1,0 +1,39 @@
+{
+  "kind": "collectionType",
+  "collectionName": "freight_class_pricings",
+  "info": {
+    "singularName": "freight-class-pricing",
+    "pluralName": "freight-class-pricings",
+    "displayName": "Freight Class Pricing",
+    "description": "Freight class pricing by distance and weight breakpoints"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "freightClass": {
+      "type": "integer",
+      "required": true
+    },
+    "distance": {
+      "type": "string",
+      "required": true
+    },
+    "weightBreakpoint": {
+      "type": "string",
+      "required": true
+    },
+    "price": {
+      "type": "decimal",
+      "required": true
+    },
+    "breakpointValue": {
+      "type": "integer"
+    }
+  }
+}
+
+
+
+

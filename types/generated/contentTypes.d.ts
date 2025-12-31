@@ -430,6 +430,46 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiDiscountSettingsDiscountSetting
+  extends Struct.SingleTypeSchema {
+  collectionName: 'freight_settings';
+  info: {
+    description: 'Global freight calculation settings including discount percentage';
+    displayName: 'Freight Settings';
+    pluralName: 'discount-settings';
+    singularName: 'discount-setting';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    discountPercentage: Schema.Attribute.Decimal &
+      Schema.Attribute.SetMinMax<
+        {
+          max: 100;
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
+    isDiscountEnabled: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::discount-settings.discount-setting'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiFreightCalculationFreightCalculation
   extends Struct.CollectionTypeSchema {
   collectionName: 'freight_calculations';
@@ -458,6 +498,111 @@ export interface ApiFreightCalculationFreightCalculation
     sub: Schema.Attribute.Integer &
       Schema.Attribute.Required &
       Schema.Attribute.Unique;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiFreightClassPricingFreightClassPricing
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'freight_class_pricings';
+  info: {
+    description: 'Freight class pricing by distance and weight breakpoints';
+    displayName: 'Freight Class Pricing';
+    pluralName: 'freight-class-pricings';
+    singularName: 'freight-class-pricing';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    breakpointValue: Schema.Attribute.Integer;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    distance: Schema.Attribute.String & Schema.Attribute.Required;
+    freightClass: Schema.Attribute.Integer & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::freight-class-pricing.freight-class-pricing'
+    > &
+      Schema.Attribute.Private;
+    price: Schema.Attribute.Decimal & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    weightBreakpoint: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
+export interface ApiMedusaDiscountSettingsMedusaDiscountSetting
+  extends Struct.SingleTypeSchema {
+  collectionName: 'medusa_discount_settings';
+  info: {
+    description: 'Discount settings for Medusa API responses';
+    displayName: 'Medusa Discount Settings';
+    pluralName: 'medusa-discount-settings';
+    singularName: 'medusa-discount-setting';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    discountPercentage: Schema.Attribute.Decimal &
+      Schema.Attribute.SetMinMax<
+        {
+          max: 100;
+          min: 0;
+        },
+        number
+      > &
+      Schema.Attribute.DefaultTo<0>;
+    isDiscountEnabled: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::medusa-discount-settings.medusa-discount-setting'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiWarehouseWarehouse extends Struct.CollectionTypeSchema {
+  collectionName: 'warehouses';
+  info: {
+    description: 'Warehouse locations with postal codes';
+    displayName: 'Warehouse';
+    pluralName: 'warehouses';
+    singularName: 'warehouse';
+  };
+  options: {
+    draftAndPublish: true;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::warehouse.warehouse'
+    > &
+      Schema.Attribute.Private;
+    name: Schema.Attribute.String & Schema.Attribute.Required;
+    postalCode: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    salesChannelId: Schema.Attribute.String & Schema.Attribute.Unique;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -974,7 +1119,11 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::discount-settings.discount-setting': ApiDiscountSettingsDiscountSetting;
       'api::freight-calculation.freight-calculation': ApiFreightCalculationFreightCalculation;
+      'api::freight-class-pricing.freight-class-pricing': ApiFreightClassPricingFreightClassPricing;
+      'api::medusa-discount-settings.medusa-discount-setting': ApiMedusaDiscountSettingsMedusaDiscountSetting;
+      'api::warehouse.warehouse': ApiWarehouseWarehouse;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

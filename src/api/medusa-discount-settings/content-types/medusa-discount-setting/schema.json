@@ -1,0 +1,28 @@
+{
+  "kind": "singleType",
+  "collectionName": "medusa_discount_settings",
+  "info": {
+    "singularName": "medusa-discount-setting",
+    "pluralName": "medusa-discount-settings",
+    "displayName": "Medusa Discount Settings",
+    "description": "Discount settings for Medusa API responses"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "discountPercentage": {
+      "type": "decimal",
+      "default": 0,
+      "min": 0,
+      "max": 100,
+      "required": false
+    },
+    "isDiscountEnabled": {
+      "type": "boolean",
+      "default": false
+    }
+  }
+}
+
