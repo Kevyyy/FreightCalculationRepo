@@ -1,3 +1,8 @@
+/**
+ * Fulfillment controller for shipping calculation
+ * Implements Medusa API integration with Strapi fallback
+ */
+
 export default {
   async calculateShipping(ctx) {
     const cartId = ctx.request.body?.cart?.id || 'unknown';
@@ -20,16 +25,14 @@ export default {
         for (let i = 0; i < cart.boxes.length; i++) {
           const box = cart.boxes[i];
           if (!box.length || !box.width || !box.height || !box.weight) {
-            return ctx.badRequest(`Box ${i + 1} is missing required fields: length, width, height, and weight are required`);
+            return ctx.badRequest(
+              `Box ${i + 1} is missing required fields: length, width, height, and weight are required`
+            );
           }
         }
       }
 
-      if (!cart.shipping_address) {
-        return ctx.badRequest('Shipping address is required');
-      }
-
-      if (!cart.shipping_address.postal_code) {
+      if (!cart.shipping_address?.postal_code) {
         return ctx.badRequest('Shipping address postal_code is required');
       }
 
@@ -38,39 +41,21 @@ export default {
         throw new Error('Strapi instance not available');
       }
 
-      const destinationPostalCode = cart.shipping_address?.postal_code;
+      const destinationPostalCode = cart.shipping_address.postal_code;
+      const fulfillmentServiceFactory = require('../services/fulfillment').default;
+      const fulfillmentService = fulfillmentServiceFactory({ strapi: strapiInstance });
 
-      const SALES_CHANNEL_POSTAL_CODES: Record<string, string> = {
-        'sc_01GY1TR8XSSA865FXVJDQR9XCZ': 'H2K 4P5',
-        'sc_01H54KV0V84HGG6PZD06T3J8C4': 'L0L 1P0',
-        'sc_01H54KTSHXG7TYSRN9XND4HHQB': 'J3E 0C4',
-      };
-
-      let originPostalCode: string;
-      if (cart.warehouse_id) {
-        const warehouse = await strapiInstance.documents('api::warehouse.warehouse').findOne({
-          documentId: typeof cart.warehouse_id === 'string' ? parseInt(cart.warehouse_id) : cart.warehouse_id,
-        });
-        if (warehouse && warehouse.postalCode) {
-          originPostalCode = warehouse.postalCode;
-        } else {
-          originPostalCode = SALES_CHANNEL_POSTAL_CODES[cart.sales_channel_id || ''] || Object.values(SALES_CHANNEL_POSTAL_CODES)[0];
-        }
-      } else if (cart.sales_channel_id && SALES_CHANNEL_POSTAL_CODES[cart.sales_channel_id]) {
-        originPostalCode = SALES_CHANNEL_POSTAL_CODES[cart.sales_channel_id];
-      } else {
-        const fulfillmentServiceFactory = require('../services/fulfillment').default;
-        const fulfillmentService = fulfillmentServiceFactory({ strapi: strapiInstance });
-        originPostalCode = await fulfillmentService.getOriginPostalCode(
-          cart.sales_channel_id,
-          destinationPostalCode,
-          cart.warehouse_id
-        );
-      }
+      // Get origin postal code (service handles all priority logic)
+      const originPostalCode = await fulfillmentService.getOriginPostalCode(
+        cart.sales_channel_id,
+        destinationPostalCode,
+        cart.warehouse_id
+      );
 
       let medusaPrice: number | null = null;
       let medusaDiscountPercent = 0;
 
+      // Attempt Medusa API call
       try {
         const axios = require('axios');
         const FREIGHTCOM_API_KEY = process.env.FREIGHTCOM_API_KEY;
@@ -80,18 +65,14 @@ export default {
           throw new Error('FREIGHTCOM_API_KEY not configured in environment variables');
         }
 
+        // Convert cart items/boxes to Medusa API format
         const items = [];
         if (cart.boxes && Array.isArray(cart.boxes)) {
           for (const box of cart.boxes) {
             items.push({
               measurements: {
-                weight: { unit: 'g', value: box.weight },
-                cuboid: {
-                  unit: 'mm',
-                  l: box.length,
-                  w: box.width,
-                  h: box.height,
-                },
+                weight: { unit: 'lb', value: box.weight },
+                cuboid: { unit: 'in', l: box.length, w: box.width, h: box.height },
               },
               description: 'string',
               freight_class: 'string',
@@ -104,13 +85,8 @@ export default {
             for (let i = 0; i < quantity; i++) {
               items.push({
                 measurements: {
-                  weight: { unit: 'g', value: product.weight || 0 },
-                  cuboid: {
-                    unit: 'mm',
-                    l: product.length || 0,
-                    w: product.width || 0,
-                    h: product.height || 0,
-                  },
+                  weight: { unit: 'lb', value: product.weight || 0 },
+                  cuboid: { unit: 'in', l: product.length || 0, w: product.width || 0, h: product.height || 0 },
                 },
                 description: 'string',
                 freight_class: 'string',
@@ -119,6 +95,7 @@ export default {
           }
         }
 
+        // Calculate delivery date (7 days from now)
         const deliveryDate = new Date();
         deliveryDate.setDate(deliveryDate.getDate() + 7);
         const day = String(deliveryDate.getDate()).padStart(2, '0');
@@ -127,40 +104,10 @@ export default {
 
         const client = axios.create({
           baseURL: MEDUSA_BASE_URL,
-          headers: {
-            Authorization: FREIGHTCOM_API_KEY,
-          },
+          headers: { Authorization: FREIGHTCOM_API_KEY },
         });
 
-        const servicesResponse = await client.get('/services');
-        const availableServices = servicesResponse.data;
-
-        if (!availableServices || availableServices.length === 0) {
-          throw new Error('No services available from Medusa API');
-        }
-
-        const ltlServices = availableServices.filter((s: any) => 
-          s.id.includes('.standard') && !s.id.includes('rail')
-        );
-        
-        const priorityCarriers = ['purolatorfreight', 'freightcom', 'dayross', 'tforce', 'abf', 'versacold', 'one'];
-        const priorityServices = ltlServices.filter((s: any) => 
-          priorityCarriers.some(carrier => s.id.includes(carrier))
-        );
-        
-        const otherServices = ltlServices.filter((s: any) => 
-          !priorityServices.some(ps => ps.id === s.id)
-        );
-        const allServicesToTry = [...priorityServices, ...otherServices];
-        
-        const batchSize = 50;
-        const servicesToTry = allServicesToTry.length > 0 
-          ? allServicesToTry.slice(0, batchSize) 
-          : availableServices.slice(0, batchSize);
-        const serviceIds = servicesToTry.map((s: any) => s.id);
-
         const rateData = {
-          services: serviceIds,
           details: {
             origin: {
               address: {
@@ -190,61 +137,77 @@ export default {
           },
         };
 
+        console.log(`[${cartId}] Sending rate request to Medusa API...`);
         const rateResponse = await client.post('/rate', rateData);
         const rateId = rateResponse.data.request_id;
+        console.log(`[${cartId}] Received rate ID: ${rateId}`);
 
-        const rates = await new Promise((resolve) => {
+        // Poll for rates
+        console.log(`[${cartId}] Polling for rates (max 30 attempts)...`);
+        const rates = await new Promise<any[]>((resolve) => {
           let attempts = 0;
           const maxAttempts = 30;
           const timer = setInterval(async () => {
             attempts++;
             try {
-              const response = (await client.get('/rate/' + rateId)).data;
-              if (response.status.done) {
+              const response = (await client.get(`/rate/${rateId}`)).data;
+              if (response.status?.done) {
                 clearInterval(timer);
-                resolve(response.rates || []);
+                const ratesArray = response.rates || [];
+                console.log(`[${cartId}] Rates ready! Received ${ratesArray.length} rates`);
+                resolve(ratesArray);
               } else if (attempts >= maxAttempts) {
                 clearInterval(timer);
+                console.log(`[${cartId}] Timeout after ${maxAttempts} attempts`);
                 resolve([]);
               }
             } catch (error: any) {
               clearInterval(timer);
+              console.log(`[${cartId}] Error polling rates: ${error.message}`);
               resolve([]);
             }
           }, 1000);
-        }) as any[];
+        });
 
         if (rates.length === 0) {
-          throw new Error(`No rates found from Medusa API after trying ${serviceIds.length} services`);
+          throw new Error('No rates returned from Medusa API');
         }
 
         const rate = rates[0];
-
-        if (!rate) {
-          throw new Error('No rate found from Medusa API');
+        if (!rate?.total?.value) {
+          throw new Error('Invalid rate response from Medusa API');
         }
 
+        // Convert from cents to dollars and apply multiplier
         const medusaPriceInCents = Number(rate.total.value);
         medusaPrice = Math.floor(medusaPriceInCents * 1.15) / 100;
 
-        const medusaDiscountSettings = await strapiInstance.service('api::medusa-discount-settings.medusa-discount-setting').find();
+        // Apply Medusa discount if configured
+        const medusaDiscountSettings = await strapiInstance
+          .service('api::medusa-discount-settings.medusa-discount-setting')
+          .find();
         if (medusaDiscountSettings?.isDiscountEnabled && medusaDiscountSettings?.discountPercentage) {
           medusaDiscountPercent = medusaDiscountSettings.discountPercentage;
           const discountAmount = medusaPrice * (medusaDiscountPercent / 100);
           medusaPrice = Math.max(0, medusaPrice - discountAmount);
         }
       } catch (medusaError: any) {
-        // Silently fall back to Strapi calculation
+        console.error(`[${cartId}] Medusa API error: ${medusaError.message}`);
+        if (medusaError.response) {
+          console.error(`[${cartId}] Medusa API response status: ${medusaError.response.status}`);
+          console.error(`[${cartId}] Medusa API response data:`, JSON.stringify(medusaError.response.data, null, 2));
+        }
+        console.log(`[${cartId}] Falling back to Strapi calculation`);
       }
 
-      const fulfillmentServiceFactory = require('../services/fulfillment').default;
-      const fulfillmentService = fulfillmentServiceFactory({ strapi: strapiInstance });
+      // Get Strapi calculation result
       const strapiResult = await fulfillmentService.calculateShipping(cart);
 
       if (!strapiResult.boxes || !Array.isArray(strapiResult.boxes)) {
         throw new Error('Expected boxes format from Strapi service');
       }
 
+      // Return Medusa result if successful, otherwise Strapi result
       if (medusaPrice !== null) {
         ctx.body = {
           destination: strapiResult.destination,
