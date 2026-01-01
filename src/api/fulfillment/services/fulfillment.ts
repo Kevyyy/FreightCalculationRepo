@@ -4,35 +4,69 @@
 
 export default ({ strapi }: { strapi: any }) => ({
   /**
-   * Calculate distance between two coordinates using Haversine formula
+   * Calculate distance using Google Distance Matrix API
    * Returns distance in kilometers
    */
-  calculateDistance(
-    originLat: number,
-    originLng: number,
-    destLat: number,
-    destLng: number
-  ): number {
-    const R = 6371;
-    const dLat = this.toRadians(destLat - originLat);
-    const dLng = this.toRadians(destLng - originLng);
-    
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(this.toRadians(originLat)) *
-        Math.cos(this.toRadians(destLat)) *
-        Math.sin(dLng / 2) *
-        Math.sin(dLng / 2);
-    
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  },
+  async calculateDistance(
+    originAddress: string,
+    destinationAddress: string
+  ): Promise<number> {
+    try {
+      const axios = require('axios');
+      const qs = require('qs');
+      const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
 
-  /**
-   * Convert degrees to radians
-   */
-  toRadians(degrees: number): number {
-    return degrees * (Math.PI / 180);
+      if (!GOOGLE_API_KEY) {
+        throw new Error('GOOGLE_API_KEY environment variable is not set');
+      }
+
+      type DistanceMatrix = {
+        destination_addresses: string[];
+        origin_addresses: string[];
+        rows: {
+          elements: {
+            distance: {
+              text: string;
+              value: number;
+            };
+            duration: {
+              text: string;
+              value: number;
+            };
+            status: string;
+          }[];
+        }[];
+      };
+
+      const queryData = {
+        origins: originAddress,
+        destinations: destinationAddress,
+        key: GOOGLE_API_KEY,
+      };
+
+      const response = await axios.get(
+        `https://maps.googleapis.com/maps/api/distancematrix/json?${qs.stringify(queryData)}`
+      );
+
+      const distanceMatrix = response.data as DistanceMatrix;
+
+      if (distanceMatrix.rows.length === 0) {
+        throw new Error('No distance matrix rows returned');
+      }
+
+      const { elements } = distanceMatrix.rows[0];
+      const element = elements[0];
+
+      if (!element || element.status !== 'OK') {
+        throw new Error(`Distance Matrix API error: ${element?.status || 'No element returned'}`);
+      }
+
+      // Distance Matrix API returns distance in meters, convert to kilometers
+      const distanceMeters = element.distance.value;
+      return distanceMeters / 1000;
+    } catch (error: any) {
+      throw new Error(`Failed to calculate distance: ${error.message}`);
+    }
   },
 
   /**
@@ -347,31 +381,24 @@ export default ({ strapi }: { strapi: any }) => ({
           }
 
           const destAddress = `${destinationPostalCode} CA`;
-          const destCoords = await this.geocodeAddress(destAddress);
-
-          if (!destCoords) {
-            return allWarehouses[0].postalCode;
-          }
 
           let closestWarehouse = allWarehouses[0];
           let minDistance = Infinity;
 
           for (const warehouse of allWarehouses) {
-            const originAddress = `${warehouse.postalCode} CA`;
-            const originCoords = await this.geocodeAddress(originAddress);
+            if (!warehouse.postalCode) continue;
 
-            if (originCoords) {
-              const distance = this.calculateDistance(
-                originCoords.lat,
-                originCoords.lng,
-                destCoords.lat,
-                destCoords.lng
-              );
+            const originAddress = `${warehouse.postalCode} CA`;
+
+            try {
+              const distance = await this.calculateDistance(originAddress, destAddress);
 
               if (distance < minDistance) {
                 minDistance = distance;
                 closestWarehouse = warehouse;
               }
+            } catch (error) {
+              continue;
             }
           }
 
@@ -393,39 +420,6 @@ export default ({ strapi }: { strapi: any }) => ({
     }
   },
 
-  /**
-   * Geocode address to coordinates using Google Geocoding API
-   */
-  async geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
-    try {
-      const axios = require('axios');
-      const qs = require('qs');
-      const GOOGLE_API_KEY = process.env.GOOGLE_API_KEY;
-
-      if (!GOOGLE_API_KEY) {
-        throw new Error('GOOGLE_API_KEY environment variable is not set');
-      }
-
-      const response = await axios.get(
-        `https://maps.googleapis.com/maps/api/geocode/json?${qs.stringify({
-          address: address,
-          key: GOOGLE_API_KEY,
-        })}`
-      );
-
-      if (response.data.results && response.data.results.length > 0) {
-        const location = response.data.results[0].geometry.location;
-        return {
-          lat: location.lat,
-          lng: location.lng,
-        };
-      }
-
-      return null;
-    } catch (error) {
-      return null;
-    }
-  },
 
   /**
    * Calculate shipping price for items or boxes
@@ -486,19 +480,7 @@ export default ({ strapi }: { strapi: any }) => ({
     const originAddress = `${originPostalCode} CA`;
     const destinationAddress = `${destinationPostalCode} CA`;
 
-    const originCoords = await this.geocodeAddress(originAddress);
-    const destCoords = await this.geocodeAddress(destinationAddress);
-
-    if (!originCoords || !destCoords) {
-      throw new Error('Could not geocode postal codes. Please check postal codes and ensure GOOGLE_API_KEY is set.');
-    }
-
-    const distanceKm = this.calculateDistance(
-      originCoords.lat,
-      originCoords.lng,
-      destCoords.lat,
-      destCoords.lng
-    );
+    const distanceKm = await this.calculateDistance(originAddress, destinationAddress);
     const distanceRange = this.mapDistanceToRange(distanceKm);
 
     if (cart.boxes && Array.isArray(cart.boxes) && cart.boxes.length > 0) {
