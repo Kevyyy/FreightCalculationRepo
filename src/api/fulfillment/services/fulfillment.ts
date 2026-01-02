@@ -1,6 +1,6 @@
 /**
  * Fulfillment service for calculating shipping rates
- * Supports both Medusa API integration and internal Strapi-based calculations
+ * Supports both FreightCom API integration and internal Strapi-based calculations
  */
 
 import axios from 'axios';
@@ -73,16 +73,16 @@ export default ({ strapi }: { strapi: any }) => ({
    */
   mapDistanceToRange(distanceKm: number): string {
     const ranges: [number, number, string][] = [
-      [0, 100, '0-99km'],
-      [100, 200, '100-199km'],
-      [200, 300, '200-299km'],
-      [300, 400, '300-399km'],
-      [400, 500, '400-499km'],
-      [500, 600, '500-599km'],
-      [600, 700, '600-699km'],
-      [700, 800, '700-799km'],
-      [800, 900, '800-899km'],
-      [900, 1000, '900-999km'],
+      [0, 99, '0-99km'],
+      [100, 199, '100-199km'],
+      [200, 299, '200-299km'],
+      [300, 399, '300-399km'],
+      [400, 499, '400-499km'],
+      [500, 599, '500-599km'],
+      [600, 699, '600-699km'],
+      [700, 799, '700-799km'],
+      [800, 899, '800-899km'],
+      [900, 999, '900-999km'],
     ];
 
     for (const [min, max, range] of ranges) {

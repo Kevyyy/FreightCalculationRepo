@@ -1,6 +1,6 @@
 /**
  * Fulfillment controller for shipping calculation
- * Implements Medusa API integration with Strapi fallback
+ * Implements FreightCom API integration with Strapi fallback
  */
 
 export default {
@@ -52,20 +52,20 @@ export default {
         cart.warehouse_id
       );
 
-      let medusaPrice: number | null = null;
-      let medusaDiscountPercent = 0;
+      let FreightComPrice: number | null = null;
+      let freightComDiscountPercent = 0;
 
-      // Attempt Medusa API call
+      // Attempt FreightCom API call
       try {
         const axios = require('axios');
         const FREIGHTCOM_API_KEY = process.env.FREIGHTCOM_API_KEY;
-        const MEDUSA_BASE_URL = process.env.MEDUSA_BASE_URL || 'https://external-api.freightcom.com';
+        const FREIGHTCOM_BASE_URL = process.env.FREIGHTCOM_BASE_URL || 'https://external-api.freightcom.com';
 
         if (!FREIGHTCOM_API_KEY) {
           throw new Error('FREIGHTCOM_API_KEY not configured in environment variables');
         }
 
-        // Convert cart items/boxes to Medusa API format
+        // Convert cart items/boxes to FreightCom API format
         const items = [];
         if (cart.boxes && Array.isArray(cart.boxes)) {
           for (const box of cart.boxes) {
@@ -103,7 +103,7 @@ export default {
         const year = deliveryDate.getFullYear();
 
         const client = axios.create({
-          baseURL: MEDUSA_BASE_URL,
+          baseURL: FREIGHTCOM_BASE_URL,
           headers: { Authorization: FREIGHTCOM_API_KEY },
         });
 
@@ -137,7 +137,7 @@ export default {
           },
         };
 
-        console.log(`[${cartId}] Sending rate request to Medusa API...`);
+        console.log(`[${cartId}] Sending rate request to FreightCom API...`);
         const rateResponse = await client.post('/rate', rateData);
         const rateId = rateResponse.data.request_id;
         console.log(`[${cartId}] Received rate ID: ${rateId}`);
@@ -170,34 +170,34 @@ export default {
         });
 
         if (rates.length === 0) {
-          throw new Error('No rates returned from Medusa API');
+          throw new Error('No rates returned from FreightCom API');
         }
 
         const rate = rates[0];
         if (!rate?.total?.value) {
-          throw new Error('Invalid rate response from Medusa API');
+          throw new Error('Invalid rate response from FreightCom API');
         }
 
         // Convert from cents to dollars and apply multiplier
-        const medusaPriceInCents = Number(rate.total.value);
-        medusaPrice = Math.floor(medusaPriceInCents * 1.15) / 100;
+        const freightComPriceInCents = Number(rate.total.value);
+        FreightComPrice = Math.floor(freightComPriceInCents * 1.15) / 100;
 
-        // Apply Medusa discount if configured
-        const medusaDiscountSettings = await strapiInstance
+        // Apply FreightCom discount if configured
+        const freightComDiscountSettings = await strapiInstance
           .service('api::medusa-discount-settings.medusa-discount-setting')
           .find();
-        if (medusaDiscountSettings?.isDiscountEnabled && medusaDiscountSettings?.discountPercentage) {
-          medusaDiscountPercent = medusaDiscountSettings.discountPercentage;
-          const discountAmount = medusaPrice * (medusaDiscountPercent / 100);
-          medusaPrice = Math.max(0, medusaPrice - discountAmount);
+        if (freightComDiscountSettings?.isDiscountEnabled && freightComDiscountSettings?.discountPercentage) {
+          freightComDiscountPercent = freightComDiscountSettings.discountPercentage;
+          const discountAmount = FreightComPrice * (freightComDiscountPercent / 100);
+          FreightComPrice = Math.max(0, FreightComPrice - discountAmount);
         }
-      } catch (medusaError: any) {
-        console.error(`[${cartId}] Medusa API error: ${medusaError.message}`);
-        if (medusaError.response) {
-          console.error(`[${cartId}] Medusa API response status: ${medusaError.response.status}`);
-          console.error(`[${cartId}] Medusa API response data:`, JSON.stringify(medusaError.response.data, null, 2));
+      } catch (freightComError: any) {
+        console.error(`[${cartId}] FreightCom API error: ${freightComError.message}`);
+        if (freightComError.response) {
+          console.error(`[${cartId}] FreightCom API response status: ${freightComError.response.status}`);
+          console.error(`[${cartId}] FreightCom API response data:`, JSON.stringify(freightComError.response.data, null, 2));
         }
-        console.log(`[${cartId}] Falling back to Strapi calculation`);
+        console.log(`[${cartId}] Falling back to FreightCom calculation`);
       }
 
       // Get Strapi calculation result
@@ -207,16 +207,16 @@ export default {
         throw new Error('Expected boxes format from Strapi service');
       }
 
-      // Return Medusa result if successful, otherwise Strapi result
-      if (medusaPrice !== null) {
+      // Return FreightCom result if successful, otherwise Strapi result
+      if (FreightComPrice !== null) {
         ctx.body = {
           destination: strapiResult.destination,
           chosenWarehouse: strapiResult.chosenWarehouse,
           distanceKm: strapiResult.distanceKm,
-          subtotal: parseFloat(medusaPrice.toFixed(3)),
-          source: 'MEDUSA_API',
-          discountPercent: medusaDiscountPercent,
-          total: parseFloat(medusaPrice.toFixed(3)),
+          subtotal: parseFloat(FreightComPrice.toFixed(3)),
+          source: 'FreightCom_API',
+          discountPercent: freightComDiscountPercent,
+          total: parseFloat(FreightComPrice.toFixed(3)),
           currency: 'CAD',
         };
       } else {
