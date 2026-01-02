@@ -42,5 +42,18 @@
   "strapi": {
     "uuid": "da4378c4-b87c-440f-840e-da98f2048dc8",
     "installId": "7089dc194df136669fc454a9fb1aea222bbf745b1f4ff5d50373c9144d8c6baf"
-  }
+  },
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/malikbilalahmed59/Frieightcalculation.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/malikbilalahmed59/Frieightcalculation/issues"
+  },
+  "homepage": "https://github.com/malikbilalahmed59/Frieightcalculation#readme"
 }
