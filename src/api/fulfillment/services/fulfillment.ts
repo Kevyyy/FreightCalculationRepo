@@ -1,6 +1,6 @@
 /**
  * Fulfillment service for calculating shipping rates
- * Supports both Medusa API integration and internal Strapi-based calculations
+ * Supports both FreightCom API integration and internal Strapi-based calculations
  */
 
 import axios from 'axios';
