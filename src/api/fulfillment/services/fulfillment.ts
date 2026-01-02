@@ -72,17 +72,15 @@ export default ({ strapi }: { strapi: any }) => ({
    * Map distance in kilometers to distance range string used in pricing
    */
   mapDistanceToRange(distanceKm: number): string {
+    // Match exact database distance range values
     const ranges: [number, number, string][] = [
       [0, 100, '0-99km'],
-      [100, 200, '100-199km'],
-      [200, 300, '200-299km'],
-      [300, 400, '300-399km'],
-      [400, 500, '400-499km'],
-      [500, 600, '500-599km'],
-      [600, 700, '600-699km'],
-      [700, 800, '700-799km'],
-      [800, 900, '800-899km'],
-      [900, 1000, '900-999km'],
+      [100, 200, '100-200km'],
+      [200, 300, '200-300'],
+      [300, 400, '300-400'],
+      [400, 500, '400-500'],
+      [500, 700, '500-700'],
+      [700, 1000, '700-1000'],
     ];
 
     for (const [min, max, range] of ranges) {
@@ -90,7 +88,7 @@ export default ({ strapi }: { strapi: any }) => ({
         return range;
       }
     }
-    return '1000+km';
+    return '1000-1500+';
   },
 
   /**
