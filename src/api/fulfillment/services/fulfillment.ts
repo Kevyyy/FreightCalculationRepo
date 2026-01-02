@@ -62,7 +62,7 @@ export default ({ strapi }: { strapi: any }) => ({
         throw new Error(`Distance Matrix API error: ${element.status}`);
       }
 
-      return element.distance.value / 1000; // Convert meters to kilometers
+      return element.distance.value / 1000;
     } catch (error: any) {
       throw new Error(`Failed to calculate distance: ${error.message}`);
     }
@@ -73,16 +73,13 @@ export default ({ strapi }: { strapi: any }) => ({
    */
   mapDistanceToRange(distanceKm: number): string {
     const ranges: [number, number, string][] = [
-      [0, 99, '0-99km'],
-      [100, 199, '100-199km'],
-      [200, 299, '200-299km'],
-      [300, 399, '300-399km'],
-      [400, 499, '400-499km'],
-      [500, 599, '500-599km'],
-      [600, 699, '600-699km'],
-      [700, 799, '700-799km'],
-      [800, 899, '800-899km'],
-      [900, 999, '900-999km'],
+      [0, 100, '0-99km'],
+      [100, 200, '100-200km'],
+      [200, 300, '200-300'],
+      [300, 400, '300-400'],
+      [400, 500, '400-500'],
+      [500, 700, '500-700'],
+      [700, 1000, '700-1000'],
     ];
 
     for (const [min, max, range] of ranges) {
@@ -90,7 +87,7 @@ export default ({ strapi }: { strapi: any }) => ({
         return range;
       }
     }
-    return '1000+km';
+    return '1000-1500+';
   },
 
   /**
@@ -149,12 +146,10 @@ export default ({ strapi }: { strapi: any }) => ({
   async findPricingEntries(freightClass: number, distance: string): Promise<any[]> {
     const freightClassInt = Math.round(freightClass);
 
-    // Try exact distance match
     let pricings = await strapi.documents('api::freight-class-pricing.freight-class-pricing').findMany({
       filters: { freightClass: freightClassInt, distance },
     });
 
-    // Try range matching if no exact match
     if (pricings.length === 0 && distance.includes('-')) {
       const rangeStart = distance.split('-')[0].trim();
       const allPricings = await strapi.documents('api::freight-class-pricing.freight-class-pricing').findMany({
@@ -166,7 +161,6 @@ export default ({ strapi }: { strapi: any }) => ({
       });
     }
 
-    // Fallback to freight class only
     if (pricings.length === 0) {
       pricings = await strapi.documents('api::freight-class-pricing.freight-class-pricing').findMany({
         filters: { freightClass: freightClassInt },
@@ -177,14 +171,43 @@ export default ({ strapi }: { strapi: any }) => ({
   },
 
   /**
-   * Select appropriate pricing based on weight breakpoints
+   * Parse weight breakpoint string to check if weight matches
+   * Handles formats like "1000-1500", "999 kg" (actually lbs, label is wrong), "1500-2000", etc.
+   * All weights in database are in lbs - ignore "kg" labels as they are incorrect
+   * Uses exclusive upper bound (<) to handle overlapping breakpoints correctly
    */
+  matchesWeightBreakpoint(weightBreakpoint: string, weight: number): boolean {
+    if (!weightBreakpoint) return false;
+    
+    const wbp = weightBreakpoint.trim().toLowerCase();
+    
+    const rangeMatch = wbp.match(/^(\d+)\s*-\s*(\d+)/);
+    if (rangeMatch) {
+      const min = parseFloat(rangeMatch[1]);
+      const max = parseFloat(rangeMatch[2]);
+      return weight >= min && weight < max;
+    }
+    
+    const singleValueMatch = wbp.match(/^(\d+)\s*(kg|lb|lbs)?/);
+    if (singleValueMatch) {
+      const value = parseFloat(singleValueMatch[1]);
+      return weight < value;
+    }
+    
+    const plusMatch = wbp.match(/^(\d+)\+$/);
+    if (plusMatch) {
+      const min = parseFloat(plusMatch[1]);
+      return weight >= min;
+    }
+    
+    return false;
+  },
+
   selectPricingByWeight(pricings: any[], weight: number): any | null {
     const sorted = pricings
       .filter((p) => p.breakpointValue != null)
       .sort((a, b) => a.breakpointValue - b.breakpointValue);
 
-    // Find matching breakpoint
     for (let i = 0; i < sorted.length; i++) {
       const current = sorted[i];
       const next = sorted[i + 1];
@@ -193,13 +216,19 @@ export default ({ strapi }: { strapi: any }) => ({
       }
     }
 
-    // Use highest breakpoint if weight exceeds all
     if (sorted.length > 0) {
       return sorted[sorted.length - 1];
     }
 
-    // Fallback to catch-all (no breakpoint)
-    return pricings.find((p) => !p.breakpointValue) || null;
+    const withoutBreakpoint = pricings.filter((p) => !p.breakpointValue);
+    for (const pricing of withoutBreakpoint) {
+      const weightBreakpoint = pricing.weightBreakpoint || pricing.weight_breakpoint;
+      if (this.matchesWeightBreakpoint(weightBreakpoint, weight)) {
+        return pricing;
+      }
+    }
+
+    return withoutBreakpoint[0] || null;
   },
 
   /**
@@ -277,7 +306,6 @@ export default ({ strapi }: { strapi: any }) => ({
     destinationPostalCode?: string,
     warehouseId?: number | string
   ): Promise<string> {
-    // Priority 1: Specific warehouse ID
     if (warehouseId) {
       const warehouse = await strapi.documents('api::warehouse.warehouse').findOne({
         documentId: typeof warehouseId === 'string' ? parseInt(warehouseId) : warehouseId,
@@ -287,7 +315,6 @@ export default ({ strapi }: { strapi: any }) => ({
       }
     }
 
-    // Priority 2: Sales channel mapping
     if (salesChannelId) {
       const warehouses = await strapi.documents('api::warehouse.warehouse').findMany({
         filters: { salesChannelId },
@@ -297,15 +324,12 @@ export default ({ strapi }: { strapi: any }) => ({
       }
     }
 
-    // Priority 3: Closest warehouse to destination
     if (destinationPostalCode) {
       const closestWarehouse = await this.findClosestWarehouse(destinationPostalCode);
       if (closestWarehouse?.postalCode) {
         return closestWarehouse.postalCode;
       }
     }
-
-    // Priority 4: Default (first warehouse)
     const warehouses = await this.getAllWarehouses();
     if (warehouses.length > 0 && warehouses[0].postalCode) {
       return warehouses[0].postalCode;
@@ -370,7 +394,6 @@ export default ({ strapi }: { strapi: any }) => ({
     const distanceRange = this.mapDistanceToRange(distanceKm);
     const destinationCountry = country_code || 'CA';
 
-    // Use boxes if provided, otherwise convert items to boxes
     const boxes = cart.boxes && cart.boxes.length > 0 
       ? cart.boxes 
       : this.convertItemsToBoxes(cart.items || []);
@@ -422,11 +445,9 @@ export default ({ strapi }: { strapi: any }) => ({
         throw new Error(`Could not determine freight class for box with density: ${density.toFixed(2)} PCF`);
       }
 
-      // Try to find pricing with calculated freight class
       let priceResult = await this.findPriceAndRateByClassAndDistance(freightClass, distanceRange, weight);
       let freightClassUsed = freightClass;
 
-      // Try rounded freight class if needed
       if (!priceResult && freightClass % 1 !== 0) {
         const roundedClass = Math.round(freightClass);
         priceResult = await this.findPriceAndRateByClassAndDistance(roundedClass, distanceRange, weight);
@@ -435,7 +456,6 @@ export default ({ strapi }: { strapi: any }) => ({
         }
       }
 
-      // Fallback to nearest available freight class
       if (!priceResult) {
         const allPricings = await strapi.documents('api::freight-class-pricing.freight-class-pricing').findMany({
           filters: {},
@@ -482,7 +502,6 @@ export default ({ strapi }: { strapi: any }) => ({
       subtotal += priceResult.price;
     }
 
-    // Apply discount
     const settings = await strapi.service('api::discount-settings.discount-setting').find();
     const discountPercent = settings?.isDiscountEnabled && settings?.discountPercentage ? settings.discountPercentage : 0;
     const discountAmount = subtotal * (discountPercent / 100);
