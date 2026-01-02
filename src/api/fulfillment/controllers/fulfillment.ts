@@ -155,6 +155,7 @@ export default {
                 clearInterval(timer);
                 const ratesArray = response.rates || [];
                 console.log(`[${cartId}] Rates ready! Received ${ratesArray.length} rates`);
+                console.log(ratesArray);
                 resolve(ratesArray);
               } else if (attempts >= maxAttempts) {
                 clearInterval(timer);
